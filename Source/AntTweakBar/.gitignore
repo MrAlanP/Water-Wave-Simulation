@@ -16,13 +16,5 @@
 /examples/tmp
 /examples/bin32/*.exe
 /examples/bin32/*.out
-/examples/bin32/AntTweakBar.dll
 /examples/bin64/*.exe
 /examples/bin64/*.out
-/examples/bin64/AntTweakBar64.dll
-lib/debug
-lib/*.lib
-lib/*.dll
-lib/*.exp
-lib/*.so
-lib/*.so.*
