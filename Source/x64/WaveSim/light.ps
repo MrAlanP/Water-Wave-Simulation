@@ -1,0 +1,74 @@
+//Code originating from Rastertek has been utilised and modified within this class
+//Globals
+Texture2D shaderTexture;
+SamplerState SampleType;
+
+cbuffer LightBuffer
+{
+	float4 ambientColour;
+	float4 diffuseColour;
+	float3 lightDirection;
+	float specularPower;
+	float4 specularColour;
+};
+
+//Pixel transparency
+cbuffer TransparentBuffer
+{
+	float alpha;
+};
+
+
+struct PixelInput
+{
+	float4 position : SV_POSITION;
+	float2 tex : TEXCOORD0;
+	float3 normal : NORMAL;
+	float3 viewDirection : TEXCOORD1;
+};
+
+
+//Pixel Shader
+float4 PixelLightShader(PixelInput input) : SV_TARGET
+{
+	//Sample the pixel colour from the texture at the texture coord location
+	float4 textureColour = shaderTexture.Sample(SampleType, input.tex);
+
+	float4 colour = ambientColour;
+	
+	//Initialise specular colour
+	float4 specular = float4(0.0f,0.0f,0.0f,0.0f);
+
+	//Invert the light direction
+	float3 lightDir = -lightDirection;
+
+	//Calculate how much the pixel is to be lit
+	float intensity = saturate(dot(input.normal, lightDir));
+
+	if(intensity>0.0f)
+	{
+		//Set colour based on light colour and intensity
+		colour += saturate(diffuseColour * intensity);
+
+		//Saturate ambient/diffuse
+		colour = saturate(colour);
+
+		//Calculate reflection vector
+		float3 reflection = normalize(2*intensity*input.normal+lightDirection);
+
+		//Calculate specular light
+		specular = pow(saturate(dot(reflection, input.viewDirection)), specularPower);
+	}
+
+	//Set colour to light colour and texture 
+	colour = colour * textureColour;
+
+	//Saturate the final colour
+	colour = saturate(colour + specular);
+
+	//Set the alpha for the colour
+	colour.a = alpha;
+
+	return colour;
+}
+
