@@ -1,0 +1,124 @@
+//Globals
+Texture2D shaderTextures[4];
+SamplerState SampleType;
+
+cbuffer LightBuffer
+{
+	float4 ambientColour;
+	float4 diffuseColour;
+	float3 lightDirection;
+	float specularPower;
+	float4 specularColour;
+};
+
+cbuffer TransparentBuffer
+{
+	float alpha;
+};
+
+//Typedefs
+
+struct PixelInput
+{
+	float4 position : SV_POSITION;
+	float2 tex : TEXCOORD0;
+	float3 normal : NORMAL;
+	float3 tangent : TANGENT;
+	float3 binormal : BINORMAL;
+	float2 bumpTex : TEXCOORD1;
+	float2 bumpTex2 : TEXCOORD2;
+	float3 viewDirection : TEXCOORD3;
+	float whitecapStrength : TEXCOORD4;
+};
+
+float3 BlendNormalMaps(float3 n1, float3 n2)
+{
+	//Blend normal maps
+
+	float a = 1/(1 + n1.z);
+	float b = -n1.x*n1.y*a;
+
+	// Form a basis
+	float3 b1 = float3(1 - n1.x*n1.x*a, b, -n1.x);
+	float3 b2 = float3(b, 1 - n1.y*n1.y*a, -n1.y);
+	float3 b3 = n1;
+
+	if (n1.z < -0.9999999) // Handle the singularity
+	{
+		b1 = float3( 0, -1, 0);
+		b2 = float3(-1,  0, 0);
+	}
+
+	// Rotate n2 via the basis
+	float3 r = n2.x*b1 + n2.y*b2 + n2.z*b3;
+	return r;
+}
+
+
+//Pixel Shader
+
+float4 PixelLightShader(PixelInput input) : SV_TARGET
+{
+	//Sample the pixel colour from the texture at the texture coord location
+	float4 textureColour =  shaderTextures[0].Sample(SampleType, input.tex);
+	float4 foamColour = shaderTextures[1].Sample(SampleType, input.tex);
+	float3 bumpMap = shaderTextures[2].Sample(SampleType, input.bumpTex);
+	float3 bumpMap2 = shaderTextures[3].Sample(SampleType, input.bumpTex2);
+
+	//Expand the normal range 
+	bumpMap = (bumpMap * 2.0f) - 1.0f;
+	bumpMap2 = (bumpMap2 * 2.0f) - 1.0f;
+
+	//Calculate the normal
+	float3 combinedNormal = BlendNormalMaps(bumpMap,bumpMap2);
+	float3 bumpNormal = (combinedNormal.x*input.tangent) + (combinedNormal.y*input.binormal) +(combinedNormal.z*input.normal);
+	bumpNormal = normalize(bumpNormal);
+
+	float4 colour = ambientColour;
+
+	//Initialise specular colour
+	float4 specular = float4(0.0f,0.0f,0.0f,0.0f);
+
+	//Invert the light direction
+	float3 lightDir = -lightDirection;
+
+	//Limit light y direction, to allow for bump detail even with high light
+	lightDir.y = min(lightDir.y, 0.65);
+
+	//Calculate how much the pixel is to be lit
+	float intensity = saturate(dot(bumpNormal, lightDir));
+
+	if(intensity>0.0f)
+	{
+		//Set colour based on light colour and intensity
+		colour += saturate(diffuseColour * intensity);
+		
+		//Saturate ambient/diffuse
+		colour = saturate(colour);
+
+		//Calculate reflection vector
+		float3 reflection = normalize(2*intensity*input.normal+lightDirection);
+
+		//Calculate specular light
+		specular = pow(saturate(dot(reflection, input.viewDirection)), specularPower);
+	}
+
+	//Set colour to light colour and texture 
+	colour = colour * textureColour;
+	foamColour += saturate(diffuseColour);
+
+	//Saturate the final colour
+	colour = saturate(colour + specular);
+
+	//Set the alpha for the colour
+	colour.a = alpha;
+
+
+	if(input.whitecapStrength>0){
+		colour = saturate(colour + (foamColour * foamColour.a * input.whitecapStrength));
+	}
+
+	return colour;
+}
+
+
